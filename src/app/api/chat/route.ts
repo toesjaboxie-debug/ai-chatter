@@ -284,6 +284,123 @@ async function streamGoogle(
   });
 }
 
+// Special handler for Poe.com
+async function streamPoe(
+  apiKey: string,
+  model: string,
+  messages: ChatMessage[]
+) {
+  const encoder = new TextEncoder();
+  
+  // Poe API uses a different format
+  // Get the last user message for the query
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+  if (!lastUserMessage) {
+    throw new Error('No user message found');
+  }
+
+  // Build conversation history for context
+  const conversationHistory = messages.slice(0, -1).map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  const response = await fetch('https://api.poe.com/bot/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      query: lastUserMessage.content,
+      conversation_history: conversationHistory.length > 0 ? conversationHistory : undefined,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || `Poe API request failed with status ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body');
+  }
+
+  const stream = new ReadableStream({
+    async controller() {
+      try {
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += new TextDecoder().decode(value);
+          
+          // Try to parse SSE events
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                continue;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                // Poe API response format
+                const content = parsed.text || parsed.content || parsed.delta?.text;
+                if (content) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                }
+              } catch {
+                // Try to handle raw text response
+                if (data && data !== '[DONE]') {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: data })}\n\n`));
+                }
+              }
+            } else if (line.startsWith('event: ')) {
+              // Handle event type
+              continue;
+            } else if (line.trim() && !line.startsWith(':')) {
+              // Handle raw text response from Poe
+              try {
+                const parsed = JSON.parse(line);
+                const content = parsed.text || parsed.content || parsed.response;
+                if (content) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                }
+              } catch {
+                // Raw text
+                if (line.trim()) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: line })}\n\n`));
+                }
+              }
+            }
+          }
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
@@ -332,6 +449,8 @@ export async function POST(request: NextRequest) {
           return streamAnthropic(apiKey, model, messages);
         case 'google':
           return streamGoogle(apiKey, model, messages);
+        case 'poe':
+          return streamPoe(apiKey, model, messages);
         default:
           return streamOpenAICompatible(provider.baseUrl, apiKey, model, messages, providerId);
       }

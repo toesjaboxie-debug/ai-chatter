@@ -6,6 +6,7 @@ export interface Model {
   description?: string
   contextLength?: number
   pricing?: string
+  ownedBy?: string
 }
 
 export interface Provider {
@@ -17,8 +18,11 @@ export interface Provider {
   requiresApiKey: boolean
   apiKeyPlaceholder: string
   apiKeyPrefix: string
+  supportsModelListing: boolean
+  modelsEndpoint?: string
 }
 
+// Static fallback models when API is unavailable
 export const PROVIDERS: Provider[] = [
   {
     id: 'openai',
@@ -28,12 +32,14 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'sk-...',
     apiKeyPrefix: 'sk-',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
-      { id: 'gpt-4o', name: 'GPT-4o', description: 'Latest flagship model', contextLength: 128000, pricing: '$5/1M input' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable', contextLength: 128000, pricing: '$0.15/1M input' },
-      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation', contextLength: 128000, pricing: '$10/1M input' },
-      { id: 'gpt-4', name: 'GPT-4', description: 'Original GPT-4', contextLength: 8192, pricing: '$30/1M input' },
-      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and efficient', contextLength: 16385, pricing: '$0.50/1M input' },
+      { id: 'gpt-4o', name: 'GPT-4o', description: 'Latest flagship model', contextLength: 128000 },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable', contextLength: 128000 },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation', contextLength: 128000 },
+      { id: 'gpt-4', name: 'GPT-4', description: 'Original GPT-4', contextLength: 8192 },
+      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and efficient', contextLength: 16385 },
       { id: 'o1-preview', name: 'O1 Preview', description: 'Advanced reasoning', contextLength: 128000 },
       { id: 'o1-mini', name: 'O1 Mini', description: 'Fast reasoning model', contextLength: 128000 },
     ],
@@ -46,19 +52,16 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'sk-or-...',
     apiKeyPrefix: 'sk-or-',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
-      { id: 'openai/gpt-4o', name: 'GPT-4o (OpenAI)', description: 'Via OpenRouter', pricing: '$5/1M' },
-      { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini (OpenAI)', description: 'Via OpenRouter', pricing: '$0.15/1M' },
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Latest Anthropic model', pricing: '$3/1M' },
-      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', description: 'Most capable Claude', pricing: '$15/1M' },
-      { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', description: 'Google\'s best', pricing: '$2.5/1M' },
-      { id: 'google/gemini-flash-1.5', name: 'Gemini Flash 1.5', description: 'Fast Gemini', pricing: '$0.075/1M' },
-      { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', description: 'Largest open model', pricing: '$3/1M' },
-      { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', description: 'Powerful open model', pricing: '$0.52/1M' },
-      { id: 'mistralai/mistral-large', name: 'Mistral Large', description: 'Mistral\'s flagship', pricing: '$2/1M' },
-      { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', description: 'DeepSeek\'s chat model', pricing: '$0.14/1M' },
-      { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B', description: 'Alibaba\'s model', pricing: '$0.35/1M' },
-      { id: 'x-ai/grok-beta', name: 'Grok Beta', description: 'xAI\'s assistant', pricing: '$5/1M' },
+      { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Via OpenRouter' },
+      { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'Via OpenRouter' },
+      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Latest Anthropic' },
+      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', description: 'Most capable Claude' },
+      { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', description: 'Google\'s best' },
+      { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', description: 'Largest open model' },
+      { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', description: 'DeepSeek model' },
     ],
   },
   {
@@ -69,9 +72,11 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'sk-...',
     apiKeyPrefix: 'sk-',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
-      { id: 'deepseek-chat', name: 'DeepSeek Chat', description: 'General purpose chat', contextLength: 64000, pricing: '$0.14/1M input' },
-      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Advanced reasoning model', contextLength: 64000, pricing: '$0.55/1M input' },
+      { id: 'deepseek-chat', name: 'DeepSeek Chat', description: 'General purpose chat', contextLength: 64000 },
+      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Advanced reasoning', contextLength: 64000 },
     ],
   },
   {
@@ -82,10 +87,11 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'sk-ant-...',
     apiKeyPrefix: 'sk-ant-',
+    supportsModelListing: false, // Anthropic doesn't have a models endpoint
     models: [
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Latest Claude model', contextLength: 200000, pricing: '$3/1M input' },
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most powerful Claude', contextLength: 200000, pricing: '$15/1M input' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast and affordable', contextLength: 200000, pricing: '$0.25/1M input' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Latest Claude', contextLength: 200000 },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most powerful', contextLength: 200000 },
+      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast and affordable', contextLength: 200000 },
     ],
   },
   {
@@ -96,10 +102,12 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'AIza...',
     apiKeyPrefix: 'AIza',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Most capable Gemini', contextLength: 1000000, pricing: '$1.25/1M input' },
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Fast Gemini model', contextLength: 1000000, pricing: '$0.075/1M input' },
-      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', description: 'Experimental Gemini 2', contextLength: 1000000, pricing: 'Free' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Most capable Gemini', contextLength: 1000000 },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Fast Gemini', contextLength: 1000000 },
+      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', description: 'Experimental', contextLength: 1000000 },
     ],
   },
   {
@@ -110,11 +118,13 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: '...',
     apiKeyPrefix: '',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
-      { id: 'mistral-large-latest', name: 'Mistral Large', description: 'Flagship model', contextLength: 128000, pricing: '$2/1M input' },
-      { id: 'mistral-small-latest', name: 'Mistral Small', description: 'Efficient model', contextLength: 128000, pricing: '$0.2/1M input' },
-      { id: 'codestral-latest', name: 'Codestral', description: 'Code specialist', contextLength: 256000, pricing: '$0.3/1M input' },
-      { id: 'pixtral-large-latest', name: 'Pixtral Large', description: 'Vision model', contextLength: 128000, pricing: '$2/1M input' },
+      { id: 'mistral-large-latest', name: 'Mistral Large', description: 'Flagship model', contextLength: 128000 },
+      { id: 'mistral-small-latest', name: 'Mistral Small', description: 'Efficient model', contextLength: 128000 },
+      { id: 'codestral-latest', name: 'Codestral', description: 'Code specialist', contextLength: 256000 },
+      { id: 'pixtral-large-latest', name: 'Pixtral Large', description: 'Vision model', contextLength: 128000 },
     ],
   },
   {
@@ -125,6 +135,8 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'gsk_...',
     apiKeyPrefix: 'gsk_',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
       { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', description: 'Versatile open model', contextLength: 128000 },
       { id: 'llama-3.1-405b-reasoning', name: 'Llama 3.1 405B', description: 'Reasoning model', contextLength: 8192 },
@@ -141,8 +153,12 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: 'xai-...',
     apiKeyPrefix: 'xai-',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
       { id: 'grok-beta', name: 'Grok Beta', description: 'xAI assistant', contextLength: 131072 },
+      { id: 'grok-2-1212', name: 'Grok 2', description: 'Latest Grok', contextLength: 131072 },
+      { id: 'grok-2-vision-1212', name: 'Grok 2 Vision', description: 'Vision capable', contextLength: 32768 },
     ],
   },
   {
@@ -153,12 +169,47 @@ export const PROVIDERS: Provider[] = [
     requiresApiKey: true,
     apiKeyPlaceholder: '...',
     apiKeyPrefix: '',
+    supportsModelListing: true,
+    modelsEndpoint: '/models',
     models: [
       { id: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', name: 'Llama 3.3 70B', description: 'Latest Llama', contextLength: 131072 },
       { id: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', name: 'Llama 3.1 405B', description: 'Largest Llama', contextLength: 131072 },
       { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1', name: 'Mixtral 8x7B', description: 'MoE model', contextLength: 32768 },
       { id: 'Qwen/Qwen2.5-72B-Instruct-Turbo', name: 'Qwen 2.5 72B', description: 'Alibaba model', contextLength: 32768 },
       { id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3', description: 'DeepSeek latest', contextLength: 131072 },
+    ],
+  },
+  {
+    id: 'poe',
+    name: 'Poe.com',
+    description: 'Access multiple AI bots through Poe',
+    baseUrl: 'https://api.poe.com/bot',
+    requiresApiKey: true,
+    apiKeyPlaceholder: 'poe-...',
+    apiKeyPrefix: '',
+    supportsModelListing: true,
+    modelsEndpoint: '/models', // We'll use our custom endpoint
+    models: [
+      { id: 'Claude-3.5-Sonnet', name: 'Claude 3.5 Sonnet', description: 'Latest Claude via Poe', ownedBy: 'Anthropic' },
+      { id: 'Claude-3.5-Sonnet-Base', name: 'Claude 3.5 Sonnet Base', description: 'Claude base model', ownedBy: 'Anthropic' },
+      { id: 'Claude-3-Opus', name: 'Claude 3 Opus', description: 'Most capable Claude', ownedBy: 'Anthropic' },
+      { id: 'Claude-3-Haiku', name: 'Claude 3 Haiku', description: 'Fast Claude', ownedBy: 'Anthropic' },
+      { id: 'GPT-4o', name: 'GPT-4o', description: 'Latest GPT via Poe', ownedBy: 'OpenAI' },
+      { id: 'GPT-4o-mini', name: 'GPT-4o Mini', description: 'Affordable GPT', ownedBy: 'OpenAI' },
+      { id: 'GPT-4-Turbo', name: 'GPT-4 Turbo', description: 'GPT-4 Turbo', ownedBy: 'OpenAI' },
+      { id: 'o1-preview', name: 'O1 Preview', description: 'Reasoning model', ownedBy: 'OpenAI' },
+      { id: 'o1-mini', name: 'O1 Mini', description: 'Fast reasoning', ownedBy: 'OpenAI' },
+      { id: 'Gemini-1.5-Pro', name: 'Gemini 1.5 Pro', description: 'Google flagship', ownedBy: 'Google' },
+      { id: 'Gemini-1.5-Pro-Experimental', name: 'Gemini 1.5 Pro Exp', description: 'Experimental', ownedBy: 'Google' },
+      { id: 'Gemini-2.0-Flash', name: 'Gemini 2.0 Flash', description: 'Latest Gemini', ownedBy: 'Google' },
+      { id: 'Llama-3.1-405B', name: 'Llama 3.1 405B', description: 'Largest Llama', ownedBy: 'Meta' },
+      { id: 'Llama-3.1-70B', name: 'Llama 3.1 70B', description: 'Powerful Llama', ownedBy: 'Meta' },
+      { id: 'Mistral-Large', name: 'Mistral Large', description: 'Mistral flagship', ownedBy: 'Mistral' },
+      { id: 'Mistral-Small', name: 'Mistral Small', description: 'Efficient Mistral', ownedBy: 'Mistral' },
+      { id: 'Codestral', name: 'Codestral', description: 'Code specialist', ownedBy: 'Mistral' },
+      { id: 'DeepSeek-V3', name: 'DeepSeek V3', description: 'DeepSeek latest', ownedBy: 'DeepSeek' },
+      { id: 'DeepSeek-R1', name: 'DeepSeek R1', description: 'Reasoning model', ownedBy: 'DeepSeek' },
+      { id: 'Qwen-2.5-72B', name: 'Qwen 2.5 72B', description: 'Alibaba model', ownedBy: 'Alibaba' },
     ],
   },
 ]

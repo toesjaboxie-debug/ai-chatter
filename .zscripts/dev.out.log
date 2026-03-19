@@ -224,3 +224,30 @@ Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allow
 ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
 ✓ Ready in 1154ms
  GET / 200 in 1785ms (compile: 1484ms, proxy.ts: 77ms, render: 224ms)
+ GET /api/auth 401 in 105ms (compile: 81ms, proxy.ts: 7ms, render: 17ms)
+ GET / 200 in 62ms (compile: 6ms, proxy.ts: 7ms, render: 49ms)
+ GET /api/auth 401 in 20ms (compile: 3ms, proxy.ts: 8ms, render: 9ms)
+ GET / 200 in 57ms (compile: 3ms, proxy.ts: 4ms, render: 50ms)
+ GET /api/auth 401 in 13ms (compile: 1947µs, proxy.ts: 5ms, render: 6ms)
+ POST /api/auth 200 in 2.1s (compile: 2ms, proxy.ts: 5ms, render: 2.1s)
+ POST /api/auth 400 in 321ms (compile: 3ms, proxy.ts: 5ms, render: 313ms)
+ POST /api/auth 200 in 1489ms (compile: 4ms, proxy.ts: 4ms, render: 1481ms)
+✓ Compiled in 166ms
+ GET /api/auth 401 in 12ms (compile: 3ms, proxy.ts: 4ms, render: 4ms)
+✓ Compiled in 199ms
+ GET / 200 in 86ms (compile: 36ms, proxy.ts: 20ms, render: 30ms)
+ GET / 200 in 16ms (compile: 2ms, proxy.ts: 4ms, render: 10ms)
+ GET / 200 in 18ms (compile: 3ms, proxy.ts: 3ms, render: 11ms)
+ GET / 200 in 17ms (compile: 3ms, proxy.ts: 4ms, render: 10ms)
+ GET / 200 in 22ms (compile: 4ms, proxy.ts: 3ms, render: 16ms)
+ GET / 200 in 19ms (compile: 1884µs, proxy.ts: 3ms, render: 14ms)
+ GET / 200 in 15ms (compile: 1877µs, proxy.ts: 3ms, render: 10ms)
+ GET / 200 in 21ms (compile: 4ms, proxy.ts: 3ms, render: 14ms)
+ GET / 200 in 29ms (compile: 3ms, proxy.ts: 5ms, render: 20ms)
+ GET / 200 in 16ms (compile: 2ms, proxy.ts: 3ms, render: 11ms)
+ GET / 200 in 24ms (compile: 3ms, proxy.ts: 4ms, render: 17ms)
+ GET / 200 in 16ms (compile: 3ms, proxy.ts: 3ms, render: 10ms)
+ GET / 200 in 15ms (compile: 2ms, proxy.ts: 3ms, render: 10ms)
+ GET / 200 in 21ms (compile: 5ms, proxy.ts: 3ms, render: 13ms)
+✓ Compiled in 155ms
+ GET /api/auth 401 in 81ms (compile: 61ms, proxy.ts: 6ms, render: 15ms)

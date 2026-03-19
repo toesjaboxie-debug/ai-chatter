@@ -11,7 +11,6 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Send, 
   Key, 
@@ -32,10 +31,11 @@ import {
   ChevronDown,
   X,
   Menu,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { PROVIDERS, type Provider, type Model } from '@/lib/providers'
+import { PROVIDERS, type Model } from '@/lib/providers'
 
 interface Message {
   id: string
@@ -65,9 +65,11 @@ export default function Home() {
   
   // Provider and model state
   const [selectedProviderId, setSelectedProviderId] = useState('openai')
-  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini')
+  const [selectedModel, setSelectedModel] = useState('')
   const [apiKeys, setApiKeys] = useState<ApiKeys>({})
   const [showApiKey, setShowApiKey] = useState(false)
+  const [dynamicModels, setDynamicModels] = useState<Model[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
   
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -124,13 +126,52 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // When provider changes, update the selected model
+  // Load models when provider or API key changes
   useEffect(() => {
-    const provider = PROVIDERS.find(p => p.id === selectedProviderId)
-    if (provider && provider.models.length > 0) {
-      setSelectedModel(provider.models[0].id)
+    const currentApiKey = apiKeys[selectedProviderId]
+    if (currentApiKey) {
+      loadModelsFromProvider(selectedProviderId, currentApiKey)
+    } else {
+      // Use static models
+      setDynamicModels(selectedProvider.models)
+      if (selectedProvider.models.length > 0) {
+        setSelectedModel(selectedProvider.models[0].id)
+      }
     }
-  }, [selectedProviderId])
+  }, [selectedProviderId, apiKeys[selectedProviderId]])
+
+  const loadModelsFromProvider = async (providerId: string, apiKey: string) => {
+    setIsLoadingModels(true)
+    try {
+      const response = await fetch(`/api/models?provider=${providerId}&apiKey=${encodeURIComponent(apiKey)}`)
+      const data = await response.json()
+      
+      if (data.models && data.models.length > 0) {
+        setDynamicModels(data.models)
+        // Select first model if current selection not in list
+        if (!data.models.find((m: Model) => m.id === selectedModel)) {
+          setSelectedModel(data.models[0].id)
+        }
+        
+        if (data.dynamic) {
+          toast({
+            title: 'Models Loaded',
+            description: `Loaded ${data.models.length} models from ${selectedProvider.name}`,
+          })
+        }
+      } else {
+        setDynamicModels(selectedProvider.models)
+        if (selectedProvider.models.length > 0) {
+          setSelectedModel(selectedProvider.models[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error)
+      setDynamicModels(selectedProvider.models)
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
 
   const checkAuth = async () => {
     try {
@@ -370,6 +411,15 @@ export default function Home() {
     }))
   }
 
+  const refreshModels = () => {
+    const currentApiKey = apiKeys[selectedProviderId]
+    if (currentApiKey) {
+      loadModelsFromProvider(selectedProviderId, currentApiKey)
+    }
+  }
+
+  const currentModels = dynamicModels.length > 0 ? dynamicModels : selectedProvider.models
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
       {/* Header */}
@@ -532,7 +582,7 @@ export default function Home() {
                         <SelectItem key={provider.id} value={provider.id} className="text-white focus:bg-slate-700">
                           <div className="flex flex-col">
                             <span className="font-medium">{provider.name}</span>
-                            <span className="text-xs text-slate-400">{provider.models.length} models</span>
+                            <span className="text-xs text-slate-400">{provider.description}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -541,22 +591,46 @@ export default function Home() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Model</Label>
-                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-slate-300">Model {dynamicModels.length > 0 && `(${dynamicModels.length})`}</Label>
+                    {apiKeys[selectedProviderId] && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={refreshModels}
+                        disabled={isLoadingModels}
+                        className="h-6 px-2 text-xs text-slate-400 hover:text-white"
+                      >
+                        <RefreshCw className={`w-3 h-3 mr-1 ${isLoadingModels ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    )}
+                  </div>
+                  <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoadingModels}>
                     <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
-                      <SelectValue />
+                      {isLoadingModels ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading models...
+                        </span>
+                      ) : (
+                        <SelectValue placeholder="Select a model" />
+                      )}
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
-                      {selectedProvider.models.map((model) => (
+                      {currentModels.map((model) => (
                         <SelectItem key={model.id} value={model.id} className="text-white focus:bg-slate-700">
-                          <div className="flex flex-col">
+                          <div className="flex flex-col py-1">
                             <span className="font-medium">{model.name}</span>
-                            <span className="text-xs text-slate-400">{model.description}</span>
+                            <span className="text-xs text-slate-400">{model.description || model.id}</span>
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {!apiKeys[selectedProviderId] && (
+                    <p className="text-xs text-slate-500">Enter API key to load all models</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -683,12 +757,12 @@ export default function Home() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-slate-300">Model</Label>
-                      <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoadingModels}>
                         <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
-                          {selectedProvider.models.map((model) => (
+                          {currentModels.map((model) => (
                             <SelectItem key={model.id} value={model.id} className="text-white focus:bg-slate-700">
                               <span className="font-medium">{model.name}</span>
                             </SelectItem>
@@ -752,7 +826,7 @@ export default function Home() {
             </Badge>
             <ChevronDown className="w-3 h-3 text-slate-500" />
             <Badge variant="outline" className="border-slate-600 text-slate-300">
-              {selectedProvider.models.find(m => m.id === selectedModel)?.name || selectedModel}
+              {currentModels.find(m => m.id === selectedModel)?.name || selectedModel}
             </Badge>
             {!isSettingsOpen && (
               <Button
@@ -778,14 +852,14 @@ export default function Home() {
                 <p className="text-slate-400 max-w-md mb-4">
                   Select a provider, enter your API key, and start chatting with AI using real-time streaming.
                 </p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {PROVIDERS.slice(0, 4).map(p => (
+                <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                  {PROVIDERS.slice(0, 5).map(p => (
                     <Badge key={p.id} variant="outline" className="border-slate-600 text-slate-400">
                       {p.name}
                     </Badge>
                   ))}
                   <Badge variant="outline" className="border-slate-600 text-slate-400">
-                    +{PROVIDERS.length - 4} more
+                    +{PROVIDERS.length - 5} more
                   </Badge>
                 </div>
               </div>
