@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Send, 
   Key, 
@@ -22,68 +24,209 @@ import {
   Settings,
   MessageSquare,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  LogOut,
+  LogIn,
+  UserPlus,
+  Zap,
+  ChevronDown,
+  X,
+  Menu,
+  Check
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { PROVIDERS, type Provider, type Model } from '@/lib/providers'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  isStreaming?: boolean
 }
 
-const MODEL_OPTIONS = [
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fast and efficient' },
-  { value: 'gpt-4', label: 'GPT-4', description: 'Most capable' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Latest GPT-4' },
-  { value: 'gpt-4o', label: 'GPT-4o', description: 'Optimized GPT-4' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini', description: 'Lightweight GPT-4o' },
-]
+interface User {
+  id: string
+  email: string
+}
+
+interface ApiKeys {
+  [providerId: string]: string
+}
 
 export default function Home() {
-  const [apiKey, setApiKey] = useState('')
+  // Auth state
+  const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authAction, setAuthAction] = useState<'login' | 'signup'>('login')
+  
+  // Provider and model state
+  const [selectedProviderId, setSelectedProviderId] = useState('openai')
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini')
+  const [apiKeys, setApiKeys] = useState<ApiKeys>({})
   const [showApiKey, setShowApiKey] = useState(false)
-  const [model, setModel] = useState('gpt-3.5-turbo')
+  
+  // Chat state
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  
+  // UI state
   const [isSettingsOpen, setIsSettingsOpen] = useState(true)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
-  // Load saved API key and settings from localStorage
+  // Get selected provider
+  const selectedProvider = PROVIDERS.find(p => p.id === selectedProviderId) || PROVIDERS[0]
+  
+  // Load saved settings from localStorage
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('openai_api_key')
+    const savedProvider = localStorage.getItem('selected_provider')
     const savedModel = localStorage.getItem('selected_model')
-    if (savedApiKey) setApiKey(savedApiKey)
-    if (savedModel) setModel(savedModel)
+    const savedApiKeys = localStorage.getItem('api_keys')
+    
+    if (savedProvider) setSelectedProviderId(savedProvider)
+    if (savedModel) setSelectedModel(savedModel)
+    if (savedApiKeys) {
+      try {
+        setApiKeys(JSON.parse(savedApiKeys))
+      } catch {
+        // Ignore parse errors
+      }
+    }
   }, [])
 
-  // Save API key and settings to localStorage
+  // Save settings to localStorage
   useEffect(() => {
-    if (apiKey) {
-      localStorage.setItem('openai_api_key', apiKey)
-    }
-  }, [apiKey])
+    localStorage.setItem('selected_provider', selectedProviderId)
+  }, [selectedProviderId])
 
   useEffect(() => {
-    localStorage.setItem('selected_model', model)
-  }, [model])
+    localStorage.setItem('selected_model', selectedModel)
+  }, [selectedModel])
+
+  useEffect(() => {
+    localStorage.setItem('api_keys', JSON.stringify(apiKeys))
+  }, [apiKeys])
+
+  // Check auth status
+  useEffect(() => {
+    checkAuth()
+  }, [])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSendMessage = async () => {
+  // When provider changes, update the selected model
+  useEffect(() => {
+    const provider = PROVIDERS.find(p => p.id === selectedProviderId)
+    if (provider && provider.models.length > 0) {
+      setSelectedModel(provider.models[0].id)
+    }
+  }, [selectedProviderId])
+
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('/api/auth')
+      const data = await response.json()
+      setUser(data.user)
+    } catch {
+      setUser(null)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!authEmail || !authPassword) {
+      toast({
+        title: 'Error',
+        description: 'Please enter email and password',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: authAction,
+          email: authEmail,
+          password: authPassword,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed')
+      }
+
+      if (authAction === 'signup') {
+        toast({
+          title: 'Account Created',
+          description: data.message || 'Check your email to confirm your account',
+        })
+      } else {
+        setUser(data.user)
+        setAuthDialogOpen(false)
+        toast({
+          title: 'Welcome back!',
+          description: `Logged in as ${data.user.email}`,
+        })
+      }
+      
+      setAuthEmail('')
+      setAuthPassword('')
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Authentication failed',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' }),
+      })
+      setUser(null)
+      toast({
+        title: 'Logged out',
+        description: 'You have been logged out successfully',
+      })
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleSendMessage = useCallback(async () => {
     if (!inputMessage.trim()) return
     
-    if (!apiKey.trim()) {
+    const currentApiKey = apiKeys[selectedProviderId]
+    if (!currentApiKey?.trim()) {
       toast({
         title: 'API Key Required',
-        description: 'Please enter your OpenAI API key to start chatting.',
+        description: `Please enter your ${selectedProvider.name} API key in the settings panel.`,
         variant: 'destructive',
       })
       return
@@ -96,7 +239,15 @@ export default function Home() {
       timestamp: new Date(),
     }
 
-    setMessages(prev => [...prev, userMessage])
+    const assistantMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true,
+    }
+
+    setMessages(prev => [...prev, userMessage, assistantMessage])
     setInputMessage('')
     setIsLoading(true)
 
@@ -107,8 +258,9 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          apiKey,
-          model,
+          apiKey: currentApiKey,
+          providerId: selectedProviderId,
+          model: selectedModel,
           messages: [
             ...messages.map(m => ({
               role: m.role,
@@ -119,23 +271,59 @@ export default function Home() {
               content: userMessage.content,
             },
           ],
+          stream: true,
         }),
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get response')
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to get response')
       }
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date(),
+      // Handle streaming response
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No response body')
       }
 
-      setMessages(prev => [...prev, assistantMessage])
+      const decoder = new TextDecoder()
+      let fullContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.content) {
+                fullContent += parsed.content
+                setMessages(prev => prev.map(m => 
+                  m.id === assistantMessage.id 
+                    ? { ...m, content: fullContent }
+                    : m
+                ))
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+
+      setMessages(prev => prev.map(m => 
+        m.id === assistantMessage.id 
+          ? { ...m, isStreaming: false }
+          : m
+      ))
+
     } catch (error) {
       console.error('Error sending message:', error)
       toast({
@@ -143,12 +331,12 @@ export default function Home() {
         description: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
         variant: 'destructive',
       })
-      // Remove the user message if the API call failed
-      setMessages(prev => prev.filter(m => m.id !== userMessage.id))
+      // Remove both messages if the API call failed
+      setMessages(prev => prev.filter(m => m.id !== userMessage.id && m.id !== assistantMessage.id))
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [inputMessage, apiKeys, selectedProviderId, selectedModel, messages, selectedProvider.name, toast])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -166,38 +354,150 @@ export default function Home() {
   }
 
   const clearApiKey = () => {
-    setApiKey('')
-    localStorage.removeItem('openai_api_key')
+    const newKeys = { ...apiKeys }
+    delete newKeys[selectedProviderId]
+    setApiKeys(newKeys)
     toast({
       title: 'API Key Removed',
-      description: 'Your API key has been cleared from local storage.',
+      description: `Your ${selectedProvider.name} API key has been cleared.`,
     })
+  }
+
+  const updateApiKey = (key: string) => {
+    setApiKeys(prev => ({
+      ...prev,
+      [selectedProviderId]: key,
+    }))
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
       {/* Header */}
       <header className="border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-slate-400 hover:text-white"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">AI Chatter</h1>
-              <p className="text-xs text-slate-400">Chat with AI using your own API key</p>
+              <h1 className="text-lg font-bold text-white">AI Chatter</h1>
+              <p className="text-xs text-slate-400 hidden sm:block">Multi-provider AI chat with streaming</p>
             </div>
           </div>
+          
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-slate-400 border-slate-600">
+            <Badge variant="outline" className="text-slate-400 border-slate-600 hidden sm:flex">
               <MessageSquare className="w-3 h-3 mr-1" />
               {messages.length} messages
             </Badge>
+            <Badge variant="outline" className="text-emerald-400 border-emerald-600/50 hidden sm:flex">
+              <Zap className="w-3 h-3 mr-1" />
+              {selectedProvider.name}
+            </Badge>
+            
+            {/* Auth button */}
+            {authLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+            ) : user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-300 hidden sm:block">{user.email}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleLogout}
+                  className="text-slate-400 hover:text-white hover:bg-slate-700"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Dialog open={authDialogOpen} onOpenChange={setAuthDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Login
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-800 border-slate-700 text-white">
+                  <DialogHeader>
+                    <DialogTitle>{authAction === 'login' ? 'Welcome Back' : 'Create Account'}</DialogTitle>
+                    <DialogDescription className="text-slate-400">
+                      {authAction === 'login' 
+                        ? 'Sign in to sync your settings across devices' 
+                        : 'Create an account to save your preferences'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAuth} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-email" className="text-slate-300">Email</Label>
+                      <Input
+                        id="auth-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        className="bg-slate-900/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-password" className="text-slate-300">Password</Label>
+                      <Input
+                        id="auth-password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        className="bg-slate-900/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                      {authAction === 'login' ? (
+                        <>
+                          <LogIn className="w-4 h-4 mr-2" />
+                          Sign In
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Create Account
+                        </>
+                      )}
+                    </Button>
+                    <div className="text-center text-sm text-slate-400">
+                      {authAction === 'login' ? (
+                        <>
+                          Don&apos;t have an account?{' '}
+                          <button type="button" onClick={() => setAuthAction('signup')} className="text-emerald-400 hover:underline">
+                            Sign up
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          Already have an account?{' '}
+                          <button type="button" onClick={() => setAuthAction('login')} className="text-emerald-400 hover:underline">
+                            Sign in
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+            
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              className="text-slate-400 hover:text-white hover:bg-slate-700"
+              className="text-slate-400 hover:text-white hover:bg-slate-700 hidden md:flex"
             >
               <Settings className="w-5 h-5" />
             </Button>
@@ -205,30 +505,81 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex-1 flex max-w-6xl mx-auto w-full">
-        {/* Settings Panel */}
-        {isSettingsOpen && (
-          <aside className="w-80 border-r border-slate-700/50 bg-slate-900/50 p-4 flex flex-col gap-4 shrink-0">
+      <div className="flex-1 flex max-w-7xl mx-auto w-full">
+        {/* Settings Panel - Desktop */}
+        <aside className={`${isSettingsOpen ? 'w-80' : 'w-0'} border-r border-slate-700/50 bg-slate-900/50 transition-all duration-300 overflow-hidden shrink-0 hidden md:block`}>
+          <div className="p-4 flex flex-col gap-4 w-80">
+            {/* Provider Selection */}
             <Card className="bg-slate-800/50 border-slate-700">
               <CardHeader className="pb-3">
                 <CardTitle className="text-white text-lg flex items-center gap-2">
-                  <Key className="w-4 h-4 text-emerald-400" />
-                  API Configuration
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  AI Provider
                 </CardTitle>
                 <CardDescription className="text-slate-400">
-                  Your API key is stored locally and never sent to our servers.
+                  Choose your AI provider and model
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="apiKey" className="text-slate-300">OpenAI API Key</Label>
+                  <Label className="text-slate-300">Provider</Label>
+                  <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
+                    <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
+                      {PROVIDERS.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id} className="text-white focus:bg-slate-700">
+                          <div className="flex flex-col">
+                            <span className="font-medium">{provider.name}</span>
+                            <span className="text-xs text-slate-400">{provider.models.length} models</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Model</Label>
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
+                      {selectedProvider.models.map((model) => (
+                        <SelectItem key={model.id} value={model.id} className="text-white focus:bg-slate-700">
+                          <div className="flex flex-col">
+                            <span className="font-medium">{model.name}</span>
+                            <span className="text-xs text-slate-400">{model.description}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* API Key */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-white text-lg flex items-center gap-2">
+                  <Key className="w-4 h-4 text-emerald-400" />
+                  API Key
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Your {selectedProvider.name} API key
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
                   <div className="relative">
                     <Input
-                      id="apiKey"
                       type={showApiKey ? 'text' : 'password'}
-                      placeholder="sk-..."
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={selectedProvider.apiKeyPlaceholder}
+                      value={apiKeys[selectedProviderId] || ''}
+                      onChange={(e) => updateApiKey(e.target.value)}
                       className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 pr-10"
                     />
                     <Button
@@ -241,41 +592,28 @@ export default function Home() {
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </Button>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model" className="text-slate-300">Model</Label>
-                  <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-600">
-                      {MODEL_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="text-white focus:bg-slate-700">
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            <span className="text-xs text-slate-400">{option.description}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {apiKeys[selectedProviderId] && (
+                    <div className="flex items-center gap-1 text-emerald-400 text-xs">
+                      <Check className="w-3 h-3" />
+                      API key saved
+                    </div>
+                  )}
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={clearApiKey}
-                  className="w-full border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  disabled={!apiKeys[selectedProviderId]}
+                  className="w-full border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50"
                 >
                   Clear API Key
                 </Button>
               </CardContent>
             </Card>
 
+            {/* Chat Actions */}
             <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-white text-lg">Chat Actions</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="pt-4">
                 <Button
                   variant="outline"
                   size="sm"
@@ -289,19 +627,146 @@ export default function Home() {
               </CardContent>
             </Card>
 
+            {/* Privacy Notice */}
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="pt-4">
                 <div className="flex items-start gap-2 text-slate-400 text-sm">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
-                  <p>Your API key is stored only in your browser&apos;s local storage. It is sent directly to OpenAI servers for API calls.</p>
+                  <p>Your API keys are stored locally in your browser. They are sent directly to the respective AI providers.</p>
                 </div>
               </CardContent>
             </Card>
-          </aside>
+          </div>
+        </aside>
+
+        {/* Mobile Menu Overlay */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setIsMobileMenuOpen(false)} />
+            <aside className="absolute left-0 top-0 h-full w-80 bg-slate-900 border-r border-slate-700 overflow-y-auto">
+              <div className="p-4 flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-white">Settings</h2>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
+                
+                {/* Same settings content as desktop */}
+                <Card className="bg-slate-800/50 border-slate-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-white text-lg flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-emerald-400" />
+                      AI Provider
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Provider</Label>
+                      <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
+                        <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
+                          {PROVIDERS.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.id} className="text-white focus:bg-slate-700">
+                              <span className="font-medium">{provider.name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Model</Label>
+                      <Select value={selectedModel} onValueChange={setSelectedModel}>
+                        <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-800 border-slate-600 max-h-64">
+                          {selectedProvider.models.map((model) => (
+                            <SelectItem key={model.id} value={model.id} className="text-white focus:bg-slate-700">
+                              <span className="font-medium">{model.name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-slate-800/50 border-slate-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-white text-lg flex items-center gap-2">
+                      <Key className="w-4 h-4 text-emerald-400" />
+                      API Key
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="relative">
+                      <Input
+                        type={showApiKey ? 'text' : 'password'}
+                        placeholder={selectedProvider.apiKeyPlaceholder}
+                        value={apiKeys[selectedProviderId] || ''}
+                        onChange={(e) => updateApiKey(e.target.value)}
+                        className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 text-slate-400 hover:text-white"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                      >
+                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearChat}
+                  disabled={messages.length === 0}
+                  className="w-full border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear Chat
+                </Button>
+              </div>
+            </aside>
+          </div>
         )}
 
         {/* Main Chat Area */}
         <main className="flex-1 flex flex-col min-w-0">
+          {/* Current Selection Bar */}
+          <div className="border-b border-slate-700/50 bg-slate-800/50 px-4 py-2 flex items-center gap-2 text-sm">
+            <Badge variant="secondary" className="bg-slate-700 text-slate-300">
+              {selectedProvider.name}
+            </Badge>
+            <ChevronDown className="w-3 h-3 text-slate-500" />
+            <Badge variant="outline" className="border-slate-600 text-slate-300">
+              {selectedProvider.models.find(m => m.id === selectedModel)?.name || selectedModel}
+            </Badge>
+            {!isSettingsOpen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsSettingsOpen(true)}
+                className="ml-auto text-slate-400 hover:text-white"
+              >
+                <Settings className="w-4 h-4 mr-1" />
+                Settings
+              </Button>
+            )}
+          </div>
+
           {/* Messages Area */}
           <ScrollArea className="flex-1 p-4">
             {messages.length === 0 ? (
@@ -310,9 +775,19 @@ export default function Home() {
                   <Bot className="w-8 h-8 text-emerald-400" />
                 </div>
                 <h2 className="text-xl font-semibold text-white mb-2">Start a conversation</h2>
-                <p className="text-slate-400 max-w-md">
-                  Enter your OpenAI API key in the settings panel and start chatting with AI. Your key is stored locally and never leaves your browser.
+                <p className="text-slate-400 max-w-md mb-4">
+                  Select a provider, enter your API key, and start chatting with AI using real-time streaming.
                 </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {PROVIDERS.slice(0, 4).map(p => (
+                    <Badge key={p.id} variant="outline" className="border-slate-600 text-slate-400">
+                      {p.name}
+                    </Badge>
+                  ))}
+                  <Badge variant="outline" className="border-slate-600 text-slate-400">
+                    +{PROVIDERS.length - 4} more
+                  </Badge>
+                </div>
               </div>
             ) : (
               <div className="space-y-4 max-w-3xl mx-auto">
@@ -333,7 +808,12 @@ export default function Home() {
                           : 'bg-slate-800 text-slate-100 border border-slate-700'
                       }`}
                     >
-                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                      <p className="whitespace-pre-wrap break-words">
+                        {message.content}
+                        {message.isStreaming && (
+                          <span className="inline-block w-2 h-4 ml-1 bg-emerald-400 animate-pulse" />
+                        )}
+                      </p>
                       <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-emerald-200' : 'text-slate-500'}`}>
                         {message.timestamp.toLocaleTimeString()}
                       </p>
@@ -345,19 +825,6 @@ export default function Home() {
                     )}
                   </div>
                 ))}
-                {isLoading && (
-                  <div className="flex gap-3 justify-start">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
-                      <Bot className="w-4 h-4 text-white" />
-                    </div>
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div ref={messagesEndRef} />
               </div>
             )}
@@ -391,7 +858,7 @@ export default function Home() {
               </Button>
             </div>
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Press Enter to send, Shift+Enter for new line
+              Streaming enabled • Press Enter to send
             </p>
           </div>
         </main>
